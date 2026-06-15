@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="id" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt AI Command Center</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Material Symbols (Icons) -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- Custom Tailwind Configuration (Segara Theme) -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#006591",
+                        "primary-hover": "#004c6e",
+                        "surface": "#f7f9fb",
+                        "surface-container": "#eceef0",
+                        "surface-lowest": "#ffffff",
+                        "on-surface": "#191c1e",
+                        "on-surface-variant": "#3e4851",
+                        "outline-variant": "#bdc8d2",
+                        "error": "#ba1a1a",
+                        "success": "#10b981"
+                    },
+                    fontFamily: {
+                        "sora": ["Sora", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: theme('colors.surface');
+            font-family: 'Sora', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* Glassmorphism Styles */
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(189, 200, 210, 0.3);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(189, 200, 210, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(0, 101, 145, 0.05);
+        }
+
+        /* Drag & Drop Zone Effects */
+        .drop-zone {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .drop-zone:hover {
+            border-color: theme('colors.primary');
+            background-color: rgba(0, 101, 145, 0.02);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 101, 145, 0.1);
+        }
+        
+        .drop-zone-active {
+            border-color: theme('colors.primary');
+            background-color: rgba(0, 101, 145, 0.05);
+            transform: scale(1.02);
+        }
+
+        /* Table Styles */
+        tr {
+            transition: background-color 0.2s ease;
+        }
+        tr:hover td {
+            background-color: rgba(0, 101, 145, 0.02);
+        }
+        
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="text-on-surface antialiased pt-24 pb-12">
+
+    <!-- Top Navigation Bar (Glassmorphism) -->
+    <header class="glass-nav fixed top-0 w-full z-50 h-20 transition-all duration-500">
+        <nav class="flex justify-between items-center w-full px-6 max-w-7xl mx-auto h-full">
+            <div class="flex items-center gap-2 cursor-pointer">
+                <span class="material-symbols-outlined text-primary text-3xl">receipt_long</span>
+                <a class="text-2xl font-extrabold text-primary tracking-tighter" href="#">
+                    Rekap<span class="text-on-surface">.AI</span>
+                </a>
+            </div>
+            <div class="hidden lg:flex items-center gap-8">
+                <a class="text-sm font-semibold text-primary border-b-2 border-primary pb-1" href="#">Scanner</a>
+                <a class="text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors" href="#">Riwayat</a>
+                <a class="text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors" href="#">Pengaturan</a>
+            </div>
+            <div>
+                <button class="bg-primary text-white px-6 py-2.5 rounded-full text-sm font-bold active:scale-95 hover:bg-primary-hover duration-300 transition-all shadow-md">
+                    Export Data
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-6">
+        
+        <!-- Header Title -->
+        <div class="mb-10 text-center lg:text-left">
+            <span class="text-xs text-primary font-bold uppercase tracking-widest mb-2 block">Kecerdasan Buatan Terintegrasi</span>
+            <h1 class="text-4xl lg:text-5xl font-bold text-on-surface mb-3 tracking-tight">Receipt Command Center</h1>
+            <p class="text-on-surface-variant text-lg max-w-2xl">Unggah foto nota fisik Anda. Sistem AI kami akan otomatis mendeteksi nama toko, tanggal, dan total harga secara presisi.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- Left Panel: Drag & Drop Zone -->
+            <div class="lg:col-span-5 flex flex-col gap-6">
+                <!-- Drop Zone Card -->
+                <div id="dropZone" class="glass-card rounded-2xl p-8 flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed border-outline-variant drop-zone cursor-pointer relative overflow-hidden group">
+                    <div class="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
+                        <span class="material-symbols-outlined text-primary text-4xl">cloud_upload</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-on-surface mb-2 text-center">Tarik & Lepas Nota di Sini</h3>
+                    <p class="text-sm text-on-surface-variant text-center mb-8 px-4">Mendukung format JPG, PNG, atau WEBP. Maksimal ukuran file 10MB.</p>
+                    
+                    <button id="uploadBtn" class="bg-surface-container text-on-surface font-semibold px-6 py-3 rounded-xl hover:bg-outline-variant/30 transition-colors flex items-center gap-2">
+                        <span class="material-symbols-outlined text-sm">folder_open</span>
+                        Pilih dari Komputer
+                    </button>
+                    <!-- Input file hidden -->
+                    <input type="file" id="fileInput" class="hidden" accept="image/*">
+                </div>
+
+                <!-- Info Card (Kosmetik Status) -->
+                <div class="glass-card rounded-2xl p-6 flex items-center gap-4">
+                    <div id="aiIndicator" class="w-3 h-3 rounded-full bg-success animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                    <div>
+                        <p class="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Status Mesin AI</p>
+                        <p id="aiStatusText" class="text-sm font-semibold text-on-surface">Online & Siap Memproses</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Data Table -->
+            <div class="lg:col-span-7">
+                <div class="glass-card rounded-2xl overflow-hidden flex flex-col h-full border border-outline-variant">
+                    
+                    <div class="p-6 border-b border-outline-variant/50 flex justify-between items-center bg-surface-lowest/50">
+                        <h2 class="text-lg font-bold text-on-surface flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary">table_chart</span>
+                            Hasil Rekap Data
+                        </h2>
+                        <span class="bg-primary/10 text-primary text-xs font-bold px-3 py-1 rounded-full">3 Nota Diproses</span>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-surface-container/50">
+                                    <th class="py-4 px-6 text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/30">ID</th>
+                                    <th class="py-4 px-6 text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/30">Nama Toko</th>
+                                    <th class="py-4 px-6 text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/30">Tanggal</th>
+                                    <th class="py-4 px-6 text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/30 text-right">Total (Rp)</th>
+                                    <th class="py-4 px-6 text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-outline-variant/30 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody" class="text-sm font-medium text-on-surface">
+                                <tr id="emptyRow">
+                                    <td colspan="5" class="py-12 text-center text-on-surface-variant italic">Belum ada nota yang di-scan.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Footer Table (Grand Total) -->
+                    <div class="mt-auto p-6 bg-surface-lowest border-t border-outline-variant/50 flex justify-between items-center">
+                        <span class="text-sm font-bold text-on-surface-variant uppercase tracking-widest">Total Keseluruhan</span>
+                        <span id="grandTotal" class="text-2xl font-extrabold text-primary">Rp 0</span>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </main>
+    
+    <!-- Elemen Canvas Tersembunyi untuk Kompresi Gambar -->
+    <canvas id="hiddenCanvas" style="display: none;"></canvas>
+
+    <!-- Script Utama -->
+    <script src="script.js"></script>
+
+</body>
+</html>
