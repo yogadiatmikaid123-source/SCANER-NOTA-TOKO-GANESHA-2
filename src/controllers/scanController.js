@@ -12,10 +12,10 @@ exports.processReceipt = async (req, res) => {
       });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const apiKey = process.env.NVIDIA_API_KEY;
+    const endpoint = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
-    const prompt = `Ekstrak informasi dari nota belanja ini. 
+    const promptText = `Ekstrak informasi dari nota belanja ini. 
 Kembalikan HANYA dalam format JSON murni (tanpa blockquote markdown \`\`\`json) dengan struktur berikut:
 {
   "toko": "Nama Toko (jika tidak ada isi string kosong)",
@@ -24,46 +24,53 @@ Kembalikan HANYA dalam format JSON murni (tanpa blockquote markdown \`\`\`json) 
 }
 Pastikan output benar-benar hanya string JSON yang bisa di-parse.`;
 
+    // Format request standar OpenAI untuk Vision (Multimodal)
     const requestBody = {
-      contents: [
+      model: "nvidia/nemotron-3-ultra-550b-a55b",
+      messages: [
         {
-          parts: [
-            { text: prompt },
+          role: "user",
+          content: [
+            { type: "text", text: promptText },
             {
-              inline_data: {
-                mime_type: "image/jpeg",
-                data: image
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${image}`
               }
             }
           ]
         }
       ],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: "application/json",
-        topK: 1,
-        topP: 1
-      }
+      temperature: 1,
+      top_p: 0.95,
+      max_tokens: 16384,
+      // extra_body dipindahkan ke root sesuai format standar (jika server API menerimanya)
+      // Namun, karena ini request murni via fetch, kita masukkan saja jika tidak ditolak.
+      extra_body: { chat_template_kwargs: { enable_thinking: true }, reasoning_budget: 16384 }
     };
 
-    // Panggil API Google Gemini
-    // Catatan: Node.js 18+ sudah memiliki fitur fetch bawaan (native)
+    // Panggil API NVIDIA (Kompatibel dengan format OpenAI)
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
       body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
       if (response.status === 429) {
-        throw new Error('Server AI sedang sibuk (Rate Limit). Coba beberapa saat lagi.');
+        throw new Error('Server AI sedang sibuk (Rate Limit NVIDIA). Coba beberapa saat lagi.');
       }
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || 'Gagal terhubung ke Google AI API');
+      throw new Error(errorData.error?.message || `Gagal terhubung ke NVIDIA API. Status: ${response.status}`);
     }
 
     const data = await response.json();
-    let aiText = data.candidates[0].content.parts[0].text.trim();
+    
+    // Format response OpenAI: data.choices[0].message.content
+    let aiText = data.choices[0].message.content.trim();
 
     // Pembersihan JSON yang ketat (Anti-Ngebug)
     const jsonMatch = aiText.match(/\{[\s\S]*\}/);
