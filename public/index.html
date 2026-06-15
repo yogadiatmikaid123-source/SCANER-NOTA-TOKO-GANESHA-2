@@ -140,12 +140,22 @@
                     <h3 class="text-xl font-bold text-on-surface mb-2 text-center">Tarik & Lepas Nota di Sini</h3>
                     <p class="text-sm text-on-surface-variant text-center mb-8 px-4">Mendukung format JPG, PNG, atau WEBP. Maksimal ukuran file 10MB.</p>
                     
-                    <button id="uploadBtn" class="bg-surface-container text-on-surface font-semibold px-6 py-3 rounded-xl hover:bg-outline-variant/30 transition-colors flex items-center gap-2">
-                        <span class="material-symbols-outlined text-sm">folder_open</span>
-                        Pilih dari Komputer
-                    </button>
-                    <!-- Input file hidden -->
+                    <div class="flex gap-4 mt-4">
+                        <button id="uploadBtn" class="bg-surface-container text-on-surface font-semibold px-6 py-3 rounded-xl hover:bg-outline-variant/30 transition-colors flex items-center gap-2">
+                            <span class="material-symbols-outlined text-sm">folder_open</span>
+                            Galeri
+                        </button>
+                        
+                        <button id="cameraBtn" class="bg-primary text-white font-semibold px-6 py-3 rounded-xl hover:bg-primary-hover transition-colors flex items-center gap-2 shadow-md">
+                            <span class="material-symbols-outlined text-sm">photo_camera</span>
+                            Kamera
+                        </button>
+                    </div>
+
+                    <!-- Input file hidden untuk Galeri (Bisa milih gambar apa saja) -->
                     <input type="file" id="fileInput" class="hidden" accept="image/*">
+                    <!-- Input file hidden untuk Kamera HP (Langsung buka native camera) -->
+                    <input type="file" id="cameraInput" class="hidden" accept="image/*" capture="environment">
                 </div>
 
                 <!-- Info Card (Kosmetik Status) -->

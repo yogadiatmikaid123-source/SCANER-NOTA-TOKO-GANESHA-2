@@ -1,7 +1,9 @@
 // --- DOM Elements ---
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
+const cameraInput = document.getElementById('cameraInput');
 const uploadBtn = document.getElementById('uploadBtn');
+const cameraBtn = document.getElementById('cameraBtn');
 const tableBody = document.getElementById('tableBody');
 const emptyRow = document.getElementById('emptyRow');
 const grandTotalEl = document.getElementById('grandTotal');
@@ -10,15 +12,32 @@ const aiIndicator = document.getElementById('aiIndicator');
 const aiStatusText = document.getElementById('aiStatusText');
 
 // --- State Management ---
-let scannedData = [];
+// Membaca data tersimpan di localStorage (seperti versi lama)
+let scannedData = JSON.parse(localStorage.getItem('scanned_data') || '[]');
 const BACKEND_URL = '/api/scan';
 
-// --- Event Listeners untuk Drag & Drop ---
-dropZone.addEventListener('click', () => fileInput.click());
-uploadBtn.addEventListener('click', (e) => {
-    e.stopPropagation(); // Mencegah double click karena berada dalam dropZone
+// Generate Unique ID
+const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+// --- Inisialisasi ---
+function init() {
+    if (scannedData.length > 0) {
+        emptyRow.style.display = 'none';
+        scannedData.forEach(item => {
+            renderRowDOM(item);
+        });
+        updateGrandTotal();
+    }
+}
+init();
+
+// --- Event Listeners untuk Input ---
+dropZone.addEventListener('click', (e) => {
+    if(e.target.closest('button')) return; // Jangan trigger jika klik tombol
     fileInput.click();
 });
+uploadBtn.addEventListener('click', () => fileInput.click());
+cameraBtn.addEventListener('click', () => cameraInput.click());
 
 dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -38,13 +57,15 @@ dropZone.addEventListener('drop', (e) => {
     }
 });
 
-fileInput.addEventListener('change', (e) => {
+// Listener Input File & Camera
+const inputHandler = (e) => {
     if (e.target.files && e.target.files.length > 0) {
         handleFile(e.target.files[0]);
     }
-    // Reset input agar bisa memilih file yang sama lagi jika perlu
-    fileInput.value = '';
-});
+    e.target.value = ''; // Reset
+};
+fileInput.addEventListener('change', inputHandler);
+cameraInput.addEventListener('change', inputHandler);
 
 // --- File Handling & Compression ---
 function handleFile(file) {
@@ -60,14 +81,13 @@ function handleFile(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
         const img = new Image();
-        img.onload = () => compressAndSend(img);
+        img.onload = () => compressAndQueue(img);
         img.src = e.target.result;
     };
     reader.readAsDataURL(file);
 }
 
-function compressAndSend(img) {
-    // Kompresi gambar menjadi lebar maksimal 800px
+function compressAndQueue(img) {
     const MAX_WIDTH = 800;
     const scale = Math.min(MAX_WIDTH / img.width, 1);
     
@@ -76,24 +96,41 @@ function compressAndSend(img) {
     const ctx = hiddenCanvas.getContext('2d');
     ctx.drawImage(img, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
     
-    // Konversi ke base64 dengan kompresi 50%
     const base64Image = hiddenCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
     
-    // Kirim ke backend
-    sendToBackend(base64Image);
+    const tempId = generateId();
+    addLoadingRow(tempId); // Memunculkan loading di UI
+    queueImage(base64Image, tempId); // Masukkan ke sistem antrean
 }
 
-// --- Komunikasi dengan Backend API ---
-async function sendToBackend(base64Image) {
-    const tempId = Date.now().toString();
-    addLoadingRow(tempId);
-    setAIStatus('working');
+// --- Queue System (Dari Versi Lama) ---
+let imageQueue = [];
+let isProcessingQueue = false;
 
+function queueImage(base64Image, tempId) {
+    imageQueue.push({ base64Image, tempId });
+    if (!isProcessingQueue) {
+        processQueue();
+    }
+}
+
+async function processQueue() {
+    if (imageQueue.length === 0) {
+        isProcessingQueue = false;
+        setAIStatus('idle');
+        return;
+    }
+
+    isProcessingQueue = true;
+    setAIStatus('working');
+    
+    const currentTask = imageQueue.shift();
+    
     try {
         const response = await fetch(BACKEND_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: base64Image })
+            body: JSON.stringify({ image: currentTask.base64Image })
         });
 
         const result = await response.json();
@@ -102,38 +139,44 @@ async function sendToBackend(base64Image) {
             throw new Error(result.message || 'Gagal memproses nota');
         }
 
-        // Jika berhasil, tambahkan data ke tabel
-        removeLoadingRow(tempId);
-        addDataToTable(result.data);
+        // Hapus status loading dan tambahkan data asli
+        removeLoadingRow(currentTask.tempId);
         
-        Swal.fire({
-            icon: 'success',
-            title: 'Berhasil',
-            text: 'Data nota berhasil direkap.',
-            toast: true,
-            position: 'top-end',
-            timer: 3000,
-            showConfirmButton: false
-        });
+        const newItem = {
+            id: generateId(),
+            No: scannedData.length + 1,
+            Toko: result.data.toko || '',
+            Tanggal: result.data.tanggal || '',
+            Total: result.data.total || 0
+        };
+        
+        scannedData.push(newItem);
+        localStorage.setItem('scanned_data', JSON.stringify(scannedData));
+        renderRowDOM(newItem);
+        updateGrandTotal();
 
     } catch (error) {
-        removeLoadingRow(tempId);
+        removeLoadingRow(currentTask.tempId);
         Swal.fire({
             icon: 'error',
             title: 'Gagal',
-            text: error.message
+            text: error.message,
+            toast: true,
+            position: 'top-end',
+            timer: 4000
         });
-    } finally {
-        setAIStatus('idle');
     }
+
+    // Beri jeda 1 detik agar API tidak dibombardir (Mencegah Error 429)
+    setTimeout(processQueue, 1000);
 }
 
-// --- UI / DOM Manipulations ---
+// --- Inline Editing & DOM Manipulations (Dari Versi Lama) ---
 
 function setAIStatus(status) {
     if (status === 'working') {
         aiIndicator.classList.remove('bg-success');
-        aiIndicator.classList.add('bg-error'); // Warna merah saat AI bekerja keras
+        aiIndicator.classList.add('bg-error'); 
         aiStatusText.innerText = 'Sedang Menganalisis Gambar...';
         aiStatusText.classList.add('animate-pulse');
     } else {
@@ -145,16 +188,99 @@ function setAIStatus(status) {
 }
 
 function formatRupiah(angka) {
+    angka = Number(angka) || 0; // Anti-NaN Guard
     return new Intl.NumberFormat('id-ID', {
         style: 'currency',
         currency: 'IDR',
         minimumFractionDigits: 0
-    }).format(Number(angka) || 0);
+    }).format(angka);
 }
 
 function updateGrandTotal() {
     const total = scannedData.reduce((sum, item) => sum + (Number(item.Total) || 0), 0);
     grandTotalEl.innerText = formatRupiah(total);
+}
+
+// Mencegah paste HTML (hanya text murni)
+window.handlePaste = function(e) {
+    e.preventDefault();
+    const text = (e.originalEvent || e).clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, text);
+};
+
+// Select teks otomatis saat di-klik agar cepat edit
+window.selectAllText = function(el) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+};
+
+// Fungsi Update saat cell selesai di-edit
+window.updateCell = function(cell, field) {
+    const row = cell.closest('tr');
+    const id = row.getAttribute('data-id');
+    const itemIndex = scannedData.findIndex(d => d.id === id);
+    
+    if (itemIndex > -1) {
+        let value = cell.innerText.trim();
+        
+        if (field === 'Total') {
+            // Bersihkan format rupiah menjadi angka murni
+            value = value.replace(/[^0-9]/g, ''); 
+            scannedData[itemIndex][field] = Number(value);
+            cell.innerText = formatRupiah(value);
+        } else {
+            scannedData[itemIndex][field] = value;
+        }
+        
+        localStorage.setItem('scanned_data', JSON.stringify(scannedData));
+        updateGrandTotal();
+    }
+};
+
+window.removeRow = function(btn) {
+    const row = btn.closest('tr');
+    const id = row.getAttribute('data-id');
+    
+    scannedData = scannedData.filter(d => d.id !== id);
+    scannedData.forEach((d, idx) => d.No = idx + 1);
+    localStorage.setItem('scanned_data', JSON.stringify(scannedData));
+    
+    row.remove();
+    
+    // Perbarui Nomor Urut DOM
+    const rows = tableBody.querySelectorAll('tr[data-id]');
+    rows.forEach((r, index) => {
+        r.querySelector('.number-cell').innerText = index + 1;
+    });
+
+    if (scannedData.length === 0) {
+        emptyRow.style.display = 'table-row';
+    }
+
+    updateGrandTotal();
+};
+
+function renderRowDOM(newItem) {
+    const row = document.createElement('tr');
+    row.className = 'border-b border-outline-variant/20 transition-all hover:bg-outline-variant/10';
+    row.setAttribute('data-id', newItem.id);
+
+    // Perhatikan atribut contenteditable="true" dan event listener untuk edit sejalan dengan versi lama
+    row.innerHTML = `
+        <td class="py-4 px-6 text-on-surface-variant number-cell">${newItem.No}</td>
+        <td class="py-4 px-6 editable-cell focus:outline-primary focus:bg-surface-container" contenteditable="true" onblur="updateCell(this, 'Toko')" onfocus="selectAllText(this)" onpaste="handlePaste(event)">${newItem.Toko || '-'}</td>
+        <td class="py-4 px-6 editable-cell focus:outline-primary focus:bg-surface-container" contenteditable="true" onblur="updateCell(this, 'Tanggal')" onfocus="selectAllText(this)" onpaste="handlePaste(event)">${newItem.Tanggal || '-'}</td>
+        <td class="py-4 px-6 text-right font-bold text-primary editable-cell focus:outline-primary focus:bg-surface-container" contenteditable="true" onblur="updateCell(this, 'Total')" onfocus="selectAllText(this)" onpaste="handlePaste(event)">${formatRupiah(newItem.Total)}</td>
+        <td class="py-4 px-6 text-center">
+            <button onclick="removeRow(this)" class="text-on-surface-variant hover:text-error transition-colors p-1 rounded-md hover:bg-error/10">
+                <span class="material-symbols-outlined text-xl">delete</span>
+            </button>
+        </td>
+    `;
+    tableBody.appendChild(row);
 }
 
 function addLoadingRow(id) {
@@ -185,63 +311,3 @@ function removeLoadingRow(id) {
         emptyRow.style.display = 'table-row';
     }
 }
-
-function addDataToTable(data) {
-    if (scannedData.length === 0) {
-        emptyRow.style.display = 'none';
-    }
-
-    const newItem = {
-        id: Date.now().toString(36) + Math.random().toString(36).substr(2),
-        No: scannedData.length + 1,
-        Toko: data.toko,
-        Tanggal: data.tanggal,
-        Total: data.total
-    };
-
-    const row = document.createElement('tr');
-    row.className = 'border-b border-outline-variant/20 transition-all hover:bg-outline-variant/10';
-    row.setAttribute('data-id', newItem.id);
-
-    row.innerHTML = `
-        <td class="py-4 px-6 text-on-surface-variant number-cell">${newItem.No}</td>
-        <td class="py-4 px-6">${newItem.Toko || '-'}</td>
-        <td class="py-4 px-6">${newItem.Tanggal || '-'}</td>
-        <td class="py-4 px-6 text-right font-bold text-primary">${formatRupiah(newItem.Total)}</td>
-        <td class="py-4 px-6 text-center">
-            <button onclick="removeRow(this)" class="text-on-surface-variant hover:text-error transition-colors p-1 rounded-md hover:bg-error/10">
-                <span class="material-symbols-outlined text-xl">delete</span>
-            </button>
-        </td>
-    `;
-
-    tableBody.appendChild(row);
-    scannedData.push(newItem);
-    updateGrandTotal();
-}
-
-window.removeRow = function(btn) {
-    const row = btn.closest('tr');
-    const id = row.getAttribute('data-id');
-    
-    // Hapus dari state
-    scannedData = scannedData.filter(d => d.id !== id);
-    
-    // Perbarui Nomor Urut State
-    scannedData.forEach((d, idx) => d.No = idx + 1);
-    
-    // Hapus dari DOM
-    row.remove();
-    
-    // Render ulang nomor urut DOM
-    const rows = tableBody.querySelectorAll('tr[data-id]');
-    rows.forEach((r, index) => {
-        r.querySelector('.number-cell').innerText = index + 1;
-    });
-
-    if (scannedData.length === 0) {
-        emptyRow.style.display = 'table-row';
-    }
-
-    updateGrandTotal();
-};
